@@ -1,0 +1,220 @@
+#!/usr/bin/env node
+
+/*!
+ *
+ * qdox
+ *
+ */
+
+/**
+ * Module dependencies.
+ */
+
+var fs = require('fs')
+var colors = require('colors')
+var program = require('commander')
+var util = require('util')
+var dox = require('dox')
+
+var join = require('path').join
+var cwd = process.cwd()
+
+// options
+
+program
+  .version('0.0.1')
+  .usage('[options] <file>')
+  .option('-F, --file [name]','file to read [index.js]')
+  .option('-i, --stdin', 'parse stdin [false]', Boolean)
+  .option('-s, --search [string]','search string')
+  .option('-m, --format [format]','format of output [text]','text')
+  .option('-t, --types', 'show argument types [false]', Boolean)
+  .option('-d, --dev','shows private', Boolean)
+
+// parse argv
+
+program.parse(process.argv)
+
+program.file = program.file || program.args[0] || 'index.js'
+program.search = program.search || program.args[1] || ''
+
+/**
+ * Init read stream.
+ */
+
+var readStream
+var filename = program.file
+
+// open file or stdin
+readStream =
+  !program.stdin && read(filename)
+  || !program.stdin && read(join(cwd, filename))
+  || process.stdin
+
+readStream.resume()
+readStream.setEncoding('utf8')
+
+/**
+ * stdout.
+ */
+
+var stdout = process.stdout
+
+/**
+ * Collect body.
+ */
+
+var body = ''
+
+readStream.on('data', function (data) {
+  body += data
+})
+
+readStream.on('end', function () {
+
+  /**
+   * Parse and render.
+   */
+
+  var o = dox.parseComments(body, { raw: true })
+
+  // render based on type  
+  switch (program.format) {
+    case 'html':
+      renderHtml(o)
+      break
+    default:
+      if (program.search) {
+        renderMatch(o, program.search)
+        return
+      }
+      renderText(o)
+  }
+
+})
+
+/**
+ * Render dox object to html.
+ *
+ * @param {object} o 
+ * @api private
+ */
+
+function renderHtml (o) {
+  console.error('\nNot implemented yet :(')
+}
+
+/**
+ * Render dox object as text.
+ *
+ * @param {object} o 
+ * @api private
+ */
+
+function renderText (o) {
+  var i = 2, x = 2, buf = [], maxLength = 0, out = []
+  var cons = {}
+  o.forEach(function (t) {
+    if (!t.ctx) return
+    var s = t.ctx.name+'()'.grey
+    if (('method' == t.ctx.type || 'function' == t.ctx.type)
+      && (program.dev?true:!t.isPrivate)) {
+      var key = (t.ctx.cons || t.ctx.receiver)
+        + ('method' == t.ctx.type ? '.prototype' : '')
+      cons[key] = cons[key] || []
+      cons[key].push(s)
+      maxLength = Math.max(s.length, maxLength)
+    }
+  })
+  var keys = Object.keys(cons)
+  keys.forEach(function (k) {
+    if (k != 'undefined') console.log('\n'+k.blue)
+    else console.log()
+    var cols = 2
+    x = cols-1
+    var part = Math.ceil(cons[k].length/cols)
+    for (var i = 0; i < keys.length; i+=part) {
+      for (var a = 0; a < part; a++) {
+        var s = cons[k][i+a]
+        stdout.write('  '+pad(s)+'  '+pad(cons[k][i+a+part]||''))
+        if (!--x) {
+          stdout.write('\n')
+          x = cols-1
+        }
+      }
+    }
+  })
+  stdout.write('\n')
+
+  /**
+   * Pad function.
+   *
+   * @param {string} s 
+   * @return {string} padded string
+   * @api private
+   */
+  
+  function pad (s) {
+    s = s || ''
+    return s+Array(maxLength-s.length+1).join(' ')
+  }
+}
+
+/**
+ * Render matches.
+ *
+ * @param {object} o 
+ * @param {string} k 
+ * @api private
+ */
+
+function renderMatch (o, k) {
+  console.log()
+  o.forEach(function (t) {
+    if (!t.ctx) return
+    var key = t.ctx.cons || t.ctx.receiver || ''
+    var name = t.ctx.name || ''
+    var method = (key?key+'.':'')+name+'()'
+    if (('*'==k && (program.dev?true:!t.isPrivate) && t.ctx.type != 'declaration')
+      ||(~method.toLowerCase().indexOf(k.toLowerCase()) && (program.dev?true:!t.isPrivate))) {
+      var arr = []
+      t.tags.forEach(function (tag) {
+        if (tag.name) arr.push(tag.name.grey+(program.types?(':'.white)+tag.types.join('|').green:''))
+      })
+      var tags = arr.join(', ')
+      console.log(((key?key.grey+'.':'')+name.yellow)+'('.blue+tags+')'.blue+'\n')
+      console.log(paragraph(t.description.summary, 1).white+'\n')
+      if (t.description.body.length) {
+        stdout.write(paragraph(t.description.body, 1).grey+'\n')
+      }
+    }
+  })
+}
+
+/**
+ * Reads a file if it exists.
+ *
+ * @param {string} filename 
+ * @return {stream} read stream
+ * @api private
+ */
+
+function read (filename) {
+  return fs.existsSync(filename) && fs.createReadStream(filename)
+}
+
+/**
+ * Paragraph pad a string.
+ *
+ * @param {string} s 
+ * @param {number} level 
+ * @return {string} padded
+ * @api private
+ */
+
+function paragraph (s, level) {
+  return s
+    .split(/\r\n|\n/g)
+    .map(function (s) { return Array(level+1).join('  ')+s })
+    .join('\n')
+}
