@@ -78,17 +78,23 @@ readStream.on('end', function () {
 
   var o = dox.parseComments(body, { raw: true })
 
-  // render based on type  
+  // render based on type
   switch (program.format) {
     case 'html':
       renderHtml(o)
-      break
+    break
+
+    case 'md':
+      renderMd(o)
+    break
+
     default:
       if (program.search) {
         renderMatch(o, program.search)
         return
       }
       renderText(o)
+    break
   }
 
 })
@@ -96,7 +102,7 @@ readStream.on('end', function () {
 /**
  * Render dox object to html.
  *
- * @param {object} o 
+ * @param {object} o
  * @api private
  */
 
@@ -105,9 +111,54 @@ function renderHtml (o) {
 }
 
 /**
+ * Render dox object to markdown.
+ *
+ * @param {object} o
+ * @api private
+ */
+
+function renderMd (o, k) {
+  console.log()
+  k = k || '*'
+  o.forEach(function (t) {
+    if (!t.ctx) return
+//    console.log(t)
+    var key = t.ctx.cons || t.ctx.receiver || ''
+    var name = t.ctx.name || ''
+    var method = (key?key+'.':'')+name+'()'
+    if (('*'==k && (program.dev?true:!t.isPrivate) && t.ctx.type != 'declaration')
+      ||(~method.toLowerCase().indexOf(k.toLowerCase()) && (program.dev?true:!t.isPrivate))) {
+      var arr = []
+      t.tags.filter(function (tag) {
+        return 'param'===tag.type
+      }).forEach(function (tag) {
+        if (tag.name) arr.push('`'+tag.name+'`'+(program.types?(':`')+tag.types.join('|')+'`':''))
+      })
+      var tags = arr.join(', ')
+      var ret = t.tags.filter(function (tag) {
+        return 'return'===tag.type
+      })[0]
+      // ### pad(`s`:`String`) <small>=`string`:`String`</small>
+      console.log(
+        ('### '+(key?key+'.':'')+name)+'('+tags+')'
+      + (ret?'<small> =':'')
+      + (ret?ret.description?'`'+ret.description+'`'+(program.types?':':''):'':'')
+      + (ret?program.types?'`'+ret.types.join('|')+'`':'':'')
+      + (ret?'</small>':'')
+      + '\n'
+      )
+      console.log(paragraph(t.description.summary, 1)+'\n')
+      if (t.description.body.length) {
+        stdout.write(paragraph(t.description.body, 1)+'\n')
+      }
+    }
+  })
+}
+
+/**
  * Render dox object as text.
  *
- * @param {object} o 
+ * @param {object} o
  * @api private
  */
 
@@ -149,11 +200,11 @@ function renderText (o) {
   /**
    * Pad function.
    *
-   * @param {string} s 
+   * @param {string} s
    * @return {string} padded string
    * @api private
    */
-  
+
   function pad (s) {
     s = s || ''
     return s+Array(maxLength-s.length+1).join(' ')
@@ -163,8 +214,8 @@ function renderText (o) {
 /**
  * Render matches.
  *
- * @param {object} o 
- * @param {string} k 
+ * @param {object} o
+ * @param {string} k
  * @api private
  */
 
@@ -172,17 +223,30 @@ function renderMatch (o, k) {
   console.log()
   o.forEach(function (t) {
     if (!t.ctx) return
+//    console.log(t)
     var key = t.ctx.cons || t.ctx.receiver || ''
     var name = t.ctx.name || ''
     var method = (key?key+'.':'')+name+'()'
     if (('*'==k && (program.dev?true:!t.isPrivate) && t.ctx.type != 'declaration')
       ||(~method.toLowerCase().indexOf(k.toLowerCase()) && (program.dev?true:!t.isPrivate))) {
       var arr = []
-      t.tags.forEach(function (tag) {
+      t.tags.filter(function (tag) {
+        return 'param'===tag.type
+      }).forEach(function (tag) {
         if (tag.name) arr.push(tag.name.grey+(program.types?(':'.white)+tag.types.join('|').green:''))
       })
       var tags = arr.join(', ')
-      console.log(((key?key.grey+'.':'')+name.yellow)+'('.blue+tags+')'.blue+'\n')
+      var ret = t.tags.filter(function (tag) {
+        return 'return'===tag.type
+      })[0]
+      console.log(
+        ((key?key.grey+'.':'')+name.yellow)+'('.blue+tags+')'.blue
+      + (ret?' (='.grey:'')
+      + (ret?ret.description?ret.description.grey+(program.types?':'.white:''):'':'')
+      + (ret?program.types?ret.types.join('|').cyan:'':'')
+      + (ret?')'.grey:'')
+      + '\n'
+      )
       console.log(paragraph(t.description.summary, 1).white+'\n')
       if (t.description.body.length) {
         stdout.write(paragraph(t.description.body, 1).grey+'\n')
@@ -194,7 +258,7 @@ function renderMatch (o, k) {
 /**
  * Reads a file if it exists.
  *
- * @param {string} filename 
+ * @param {string} filename
  * @return {stream} read stream
  * @api private
  */
@@ -206,8 +270,8 @@ function read (filename) {
 /**
  * Paragraph pad a string.
  *
- * @param {string} s 
- * @param {number} level 
+ * @param {string} s
+ * @param {number} level
  * @return {string} padded
  * @api private
  */
